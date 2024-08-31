@@ -15,9 +15,5 @@ RUN ./gradlew --no-daemon -Dorg.gradle.jvmargs="-Xmx2g -Xms2g" fatJar
 
 COPY weather_stations.csv .
 
-ENV JAVA_OPTS "-Xmx256m \
- -Xss256k \
- -XX:+UseShenandoahGC \
- "
-
-CMD ["sh", "-c", "java ${JAVA_OPTS} -jar build/libs/1brc-all-1.0-SNAPSHOT.jar"]
+COPY ./run.sh /
+ENTRYPOINT ["/run.sh"]
