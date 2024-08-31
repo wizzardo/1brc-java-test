@@ -1,10 +1,11 @@
 package com.example;
 
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.text.DecimalFormat;
+import java.text.DecimalFormatSymbols;
 import java.util.*;
 
 public class App {
@@ -15,24 +16,35 @@ public class App {
         this.filePath = filePath;
     }
 
-    private static final DecimalFormat df = new DecimalFormat("0.0");
-
-    static class MeasurementInfo {
-        //        long sum;
+    public static class MeasurementInfo {
         String name;
-        double sum;
-        double min = Double.MAX_VALUE;
-        double max = Double.MIN_VALUE;
         long count;
+        long sum;
+        long min = 1000;
+        long max = -1000;
+//        double sum;
+//        double min = 1000;
+//        double max = -1000;
+
+        static final DecimalFormat df;
+
+        static {
+            df = new DecimalFormat("0.0", new DecimalFormatSymbols(Locale.ENGLISH));
+            df.setRoundingMode(RoundingMode.HALF_UP);
+        }
 
         public MeasurementInfo(String name) {
             this.name = name;
         }
 
-        @Override
         public String toString() {
-            return name + "=" + df.format(min) + "/" + df.format(sum / count) + "/" + df.format(max);
+//            return name + "=" + roundDouble(min, 10) + "/" + roundDouble(sum / count, 10) + "/" + roundDouble(max, 10);
+            return name + "=" + (min / 10.0) + "/" + roundDouble((sum / 10.0) / count, 10) + "/" + (max / 10.0);
         }
+    }
+
+    static double roundDouble(double d, double scale) {
+        return Math.round(d * scale) / scale;
     }
 
     public void execute() throws IOException {
@@ -42,7 +54,7 @@ public class App {
             byte[] buf = new byte[1024 * 64];
             int r;
             ByteArrayBuilder name = new ByteArrayBuilder();
-            StringBuilder value = new StringBuilder();
+            ByteArrayBuilder value = new ByteArrayBuilder();
             ParsingState parsingState = ParsingState.NAME;
             while ((r = in.read(buf)) != -1) {
                 int offset = 0;
@@ -60,9 +72,9 @@ public class App {
                     System.out.print(", ");
                 }
                 Map.Entry<String, MeasurementInfo> entry = entries.get(i);
-                System.out.print(entry.getValue());
+                System.out.print(entry.getValue().toString());
             }
-            System.out.print("}");
+            System.out.println("}");
 
         } finally {
             try {
@@ -77,7 +89,7 @@ public class App {
         VALUE
     }
 
-    static class ByteArrayBuilder {
+    public static class ByteArrayBuilder {
         byte[] buf = new byte[128];
         int pos;
 
@@ -97,9 +109,13 @@ public class App {
         public int length() {
             return pos;
         }
+
+        public byte byteAt(int pos) {
+            return buf[pos];
+        }
     }
 
-    public ParsingState process(byte[] buf, int offset, int length, ByteArrayBuilder nameSb, StringBuilder valueSb, Map<String, MeasurementInfo> map, ParsingState state) {
+    public ParsingState process(byte[] buf, int offset, int length, ByteArrayBuilder nameSb, ByteArrayBuilder valueSb, Map<String, MeasurementInfo> map, ParsingState state) {
         int limit = offset + length;
 
         for (int i = offset; i < limit; i++) {
@@ -109,7 +125,6 @@ public class App {
                     state = ParsingState.VALUE;
                 } else {
                     if (c == '#' && nameSb.length() == 0) {
-
                         state = ParsingState.VALUE;
                     } else {
                         nameSb.append(c);
@@ -127,15 +142,8 @@ public class App {
                     nameSb.setLength(0);
 
 
-//                    int l = valueSb.length();
-//                    long value = 0;
-//                    for (int j = 0; j < l; j++) {
-//                        char cc = valueSb.charAt(j);
-//                        if (cc != '.') {
-//                            value = value * 10 + (cc - '0');
-//                        }
-//                    }
-                    double value = Double.parseDouble(valueSb.toString());
+                    long value = parseLong(valueSb);
+//                    double value = Double.parseDouble(valueSb.toString());
                     valueSb.setLength(0);
 
                     MeasurementInfo measurementInfo = map.computeIfAbsent(name, MeasurementInfo::new);
@@ -146,11 +154,35 @@ public class App {
 
                     state = ParsingState.NAME;
                 } else {
-                    valueSb.append((char) c);
+                    valueSb.append(c);
                 }
             }
         }
         return state;
+    }
+
+    private static long parseLong(ByteArrayBuilder valueSb) {
+        long value = 0;
+        int l = valueSb.length();
+        boolean minus = false;
+        {
+            byte c = valueSb.byteAt(0);
+            if (c != '-') {
+                value = (c - '0');
+            } else {
+                minus = true;
+            }
+        }
+        for (int j = 1; j < l; j++) {
+            byte c = valueSb.byteAt(j);
+            if (c != '.') {
+                value = value * 10 + (c - '0');
+            }
+        }
+        if (minus) {
+            value = -value;
+        }
+        return value;
     }
 
     public static void main(String[] args) throws IOException {
